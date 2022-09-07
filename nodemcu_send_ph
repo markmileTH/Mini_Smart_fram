@@ -1,0 +1,106 @@
+#include <SoftwareSerial.h>
+#include <Wire.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ArduinoJson.h>
+#include <ThingSpeak.h>
+#include <ESP8266Firebase.h>
+#define RE 4
+#define DE 3
+
+int ph ;
+int ph2 ;
+const char *ssid = "IoTAD01";
+const char *pass = "ccsadmin";
+
+//const byte code[]= {0x01, 0x03, 0x00, 0x1e, 0x00, 0x03, 0x65, 0xCD};
+//const byte nitro[] = {0x01,0x03, 0x00, 0x1e, 0x00, 0x01, 0xe4, 0x0c};
+const byte phaddress[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x01, 0x84, 0x0A};
+const byte phos[] = {0x01, 0x03, 0x00, 0x1f, 0x00, 0x01, 0xb5, 0xcc};
+const byte pota[] = {0x01, 0x03, 0x00, 0x20, 0x00, 0x01, 0x85, 0xc0};
+
+byte values[11];
+SoftwareSerial mod(14, 12);
+ESP8266WebServer server(80);
+DynamicJsonDocument doc (1024);
+WiFiClient client;
+Firebase firebase(PROJECT_ID);
+
+unsigned long myChannelNumber = 1826094;
+const char * myWriteAPIKey = "LHHWYJ5TXJUVN1PL";
+int statusCode = 0;
+
+void setup() {
+  Serial.begin(9600);
+  ThingSpeak.begin(client);
+  mod.begin(4800);
+  pinMode(RE, OUTPUT);
+  pinMode(DE, OUTPUT);
+  WiFi.begin(ssid, pass);
+  wifi_init();
+  Client_Send();
+  delay(1000);
+}
+
+void loop() {
+  byte val1, val2, val3;
+  val2 = Fphaddress();
+  delay(250);
+
+  ph = val2 / 10;
+  ph2 = val2 % 10;
+  Serial.print("PH: ");
+  Serial.print(ph);
+  Serial.print(".");
+  Serial.print(ph2);
+  Serial.println(" pH");
+  Client_Send();
+  delay(2000);
+}
+
+byte Fphaddress() {
+  digitalWrite(DE, HIGH);
+  digitalWrite(RE, HIGH);
+  delay(10);
+  if (mod.write(phaddress, sizeof(phaddress)) == 8) {
+    digitalWrite(DE, LOW);
+    digitalWrite(RE, LOW);
+    for (byte i = 0; i < 7; i++) {
+      values[i] = mod.read();
+    }
+  }
+  return values[4];
+}
+
+
+
+void wifi_init() {
+  WiFi.begin(ssid, pass);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Connecting... ");
+    Serial.printf("Connection Status: %d\n", WiFi.status());
+    delay(1000);
+  }
+  Serial.print("Wi-Fi connected.");
+  Serial.print("IP Address : ");
+  Serial.println(WiFi.localIP());
+}
+
+
+
+void Client_Send() {
+  ThingSpeak.setField(4, ph2);
+  int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+  if (x == 200) {
+    Serial.println("Channel update successful.");
+  }
+  else {
+    Serial.println("Problem updating channel. HTTP error code " + String(x));
+  }
+  firebase.pushInt("ph", ph2);
+  
+
+  int data2 = firebase.getInt("ph");
+  Serial.print("Received int: ");
+  Serial.println(data2);
+}
